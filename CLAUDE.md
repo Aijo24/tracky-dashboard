@@ -1,0 +1,1 @@
+- Always update @docs/TASKS.md to keep tasks tracking. Use supabase mcp for database info

@@ -1,13 +1,15 @@
-import { Outfit } from 'next/font/google';
-import './globals.css';
+import type { Metadata } from "next";
+import { AuthProvider } from "@/context/AuthContext";
+import { SidebarProvider } from "@/context/SidebarContext";
+import "./globals.css";
 
-import { SidebarProvider } from '@/context/SidebarContext';
-import { ThemeProvider } from '@/context/ThemeContext';
-import { AuthProvider } from '@/context/AuthContext';
-
-const outfit = Outfit({
-  subsets: ["latin"],
-});
+export const metadata: Metadata = {
+  title: "Tracky Dashboard - HACCP Compliance",
+  description: "Tableau de bord HACCP pour la gestion de la sécurité alimentaire",
+  icons: {
+    icon: "/favicon.ico",
+  },
+};
 
 export default function RootLayout({
   children,
@@ -15,13 +17,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body className={`${outfit.className} dark:bg-gray-900`}>
-        <ThemeProvider>
-          <AuthProvider>
-            <SidebarProvider>{children}</SidebarProvider>
-          </AuthProvider>
-        </ThemeProvider>
+    <html lang="fr" className="dark">
+      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
+        <AuthProvider>
+          <SidebarProvider>
+            {children}
+          </SidebarProvider>
+        </AuthProvider>
       </body>
     </html>
   );

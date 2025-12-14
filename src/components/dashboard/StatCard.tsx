@@ -1,43 +1,83 @@
-import React from 'react';
+"use client";
+
+import { LucideIcon } from "lucide-react";
 
 interface StatCardProps {
   title: string;
   value: string | number;
-  icon?: React.ReactNode;
+  subtitle?: string;
+  icon: LucideIcon;
   trend?: {
     value: number;
     isPositive: boolean;
   };
-  color?: 'blue' | 'green' | 'orange' | 'red' | 'purple';
+  variant?: "default" | "success" | "warning" | "error";
 }
 
-const colorClasses = {
-  blue: 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400',
-  green: 'bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400',
-  orange: 'bg-orange-50 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400',
-  red: 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400',
-  purple: 'bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400',
+const variantStyles = {
+  default: {
+    iconBg: "bg-orange-500/10",
+    iconColor: "text-orange-400",
+    trendPositive: "text-emerald-400",
+    trendNegative: "text-red-400",
+  },
+  success: {
+    iconBg: "bg-emerald-500/10",
+    iconColor: "text-emerald-400",
+    trendPositive: "text-emerald-400",
+    trendNegative: "text-red-400",
+  },
+  warning: {
+    iconBg: "bg-amber-500/10",
+    iconColor: "text-amber-400",
+    trendPositive: "text-emerald-400",
+    trendNegative: "text-red-400",
+  },
+  error: {
+    iconBg: "bg-red-500/10",
+    iconColor: "text-red-400",
+    trendPositive: "text-emerald-400",
+    trendNegative: "text-red-400",
+  },
 };
 
-export default function StatCard({ title, value, icon, trend, color = 'blue' }: StatCardProps) {
+export default function StatCard({
+  title,
+  value,
+  subtitle,
+  icon: Icon,
+  trend,
+  variant = "default",
+}: StatCardProps) {
+  const styles = variantStyles[variant];
+
   return (
-    <div className="p-6 bg-white border border-gray-200 rounded-lg dark:bg-gray-800 dark:border-gray-700">
+    <div className="glass-card-hover p-5 sm:p-6">
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</p>
-          <h3 className="mt-2 text-2xl font-bold text-gray-900 dark:text-white">{value}</h3>
+          <p className="text-sm text-slate-400 mb-1">{title}</p>
+          <p className="text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+            {value}
+          </p>
+          {subtitle && (
+            <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
+          )}
           {trend && (
-            <p className={`mt-2 text-sm flex items-center gap-1 ${trend.isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              <span>{trend.isPositive ? '↑' : '↓'}</span>
-              <span>{Math.abs(trend.value)}%</span>
-            </p>
+            <div className="flex items-center gap-1 mt-2">
+              <span
+                className={`text-xs font-medium ${
+                  trend.isPositive ? styles.trendPositive : styles.trendNegative
+                }`}
+              >
+                {trend.isPositive ? "+" : "-"}{Math.abs(trend.value)}%
+              </span>
+              <span className="text-xs text-slate-500">vs hier</span>
+            </div>
           )}
         </div>
-        {icon && (
-          <div className={`p-3 rounded-lg ${colorClasses[color]}`}>
-            {icon}
-          </div>
-        )}
+        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${styles.iconBg}`}>
+          <Icon className={`h-6 w-6 ${styles.iconColor}`} />
+        </div>
       </div>
     </div>
   );

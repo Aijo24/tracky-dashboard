@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase/client';
-import { useAuth } from '@/context/AuthContext';
+"use client";
 
-interface DashboardStats {
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabase/client";
+import { useAuth } from "@/context/AuthContext";
+
+export interface DashboardStats {
   // Temperature
   temperatureReadingsToday: number;
   temperatureAlertsToday: number;
   temperatureComplianceRate: number;
+  equipmentCount: number;
 
   // Products
   activeProducts: number;
@@ -30,162 +33,195 @@ interface DashboardStats {
 
 export function useDashboardStats() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<DashboardStats>({
-    temperatureReadingsToday: 0,
-    temperatureAlertsToday: 0,
-    temperatureComplianceRate: 0,
-    activeProducts: 0,
-    expiringProductsWeek: 0,
-    expiredProducts: 0,
-    receptionsThisMonth: 0,
-    receptionComplianceRate: 0,
-    nonConformitiesThisMonth: 0,
-    currentlyFrozen: 0,
-    currentlyThawed: 0,
-    cleaningCompletionRate: 0,
-    overdueTasks: 0,
-    tasksCompletedToday: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
 
     const fetchStats = async () => {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayStr = today.toISOString();
-
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
-      const sevenDaysFromNow = new Date(today);
-      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      setLoading(true);
+      setError(null);
 
       try {
-        // Temperature stats
-        const { data: tempReadingsToday } = await supabase
-          .from('temperature_readings')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .gte('timestamp', todayStr);
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1).toISOString();
+        const sevenDaysFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-        const { data: tempAlertsToday } = await supabase
-          .from('temperature_readings')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_within_range', false)
-          .gte('timestamp', todayStr);
+        // Fetch all data in parallel
+        const [
+          temperatureReadingsRes,
+          temperatureAlertsRes,
+          equipmentRes,
+          activeProductsRes,
+          expiringProductsRes,
+          expiredProductsRes,
+          receptionsRes,
+          nonConformReceptionsRes,
+          frozenRes,
+          thawedRes,
+          overdueTasksRes,
+          completedTasksTodayRes,
+          totalTasksTodayRes,
+        ] = await Promise.all([
+          // Temperature readings today
+          supabase
+            .from("temperature_readings")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .gte("timestamp", startOfToday),
 
-        const { data: allReadingsToday } = await supabase
-          .from('temperature_readings')
-          .select('is_within_range')
-          .eq('user_id', user.id)
-          .gte('timestamp', todayStr);
+          // Temperature alerts today
+          supabase
+            .from("temperature_readings")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_within_range", false)
+            .gte("timestamp", startOfToday),
 
-        const complianceRate = allReadingsToday && allReadingsToday.length > 0
-          ? (allReadingsToday.filter(r => r.is_within_range).length / allReadingsToday.length) * 100
-          : 0;
+          // Equipment count
+          supabase
+            .from("equipment")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id),
 
-        // Products stats
-        const { data: activeProducts } = await supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('status', 'active');
+          // Active products
+          supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("status", "active"),
 
-        const { data: expiringProducts } = await supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .lte('expiry_date', sevenDaysFromNow.toISOString());
+          // Expiring products (next 7 days)
+          supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("status", "active")
+            .lte("expiry_date", sevenDaysFromNow)
+            .gte("expiry_date", today.toISOString().split("T")[0]),
 
-        const { data: expiredProducts } = await supabase
-          .from('products')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('status', 'expired');
+          // Expired products
+          supabase
+            .from("products")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("status", "expired"),
 
-        // Receptions stats
-        const { data: receptionsThisMonth } = await supabase
-          .from('receptions')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .gte('delivery_date', startOfMonth);
+          // Receptions this month
+          supabase
+            .from("receptions")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .gte("delivery_date", startOfMonth),
 
-        const { data: allReceptionsMonth } = await supabase
-          .from('receptions')
-          .select('is_conform')
-          .eq('user_id', user.id)
-          .gte('delivery_date', startOfMonth);
+          // Non-conform receptions this month
+          supabase
+            .from("receptions")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_conform", false)
+            .gte("delivery_date", startOfMonth),
 
-        const receptionComplianceRate = allReceptionsMonth && allReceptionsMonth.length > 0
-          ? (allReceptionsMonth.filter(r => r.is_conform).length / allReceptionsMonth.length) * 100
-          : 0;
+          // Currently frozen products
+          supabase
+            .from("freezing_records")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("current_status", "frozen"),
 
-        const nonConformities = allReceptionsMonth
-          ? allReceptionsMonth.filter(r => !r.is_conform).length
-          : 0;
+          // Currently thawed products
+          supabase
+            .from("freezing_records")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("current_status", "thawed"),
 
-        // Freezing stats
-        const { data: frozenProducts } = await supabase
-          .from('freezing_records')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('current_status', 'frozen');
+          // Overdue cleaning tasks
+          supabase
+            .from("cleaning_tasks")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_overdue", true)
+            .eq("is_completed", false),
 
-        const { data: thawedProducts } = await supabase
-          .from('freezing_records')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('current_status', 'thawed');
+          // Completed tasks today
+          supabase
+            .from("cleaning_tasks")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .eq("is_completed", true)
+            .gte("completed_at", startOfToday),
 
-        // Cleaning stats
-        const { data: overdueTasks } = await supabase
-          .from('cleaning_tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('user_id', user.id)
-          .eq('is_overdue', true)
-          .eq('is_completed', false);
+          // Total tasks due today
+          supabase
+            .from("cleaning_tasks")
+            .select("id", { count: "exact", head: true })
+            .eq("user_id", user.id)
+            .lte("due_date", today.toISOString().split("T")[0]),
+        ]);
 
-        const { data: tasksToday } = await supabase
-          .from('cleaning_tasks')
-          .select('is_completed')
-          .eq('user_id', user.id)
-          .eq('due_date', today.toISOString().split('T')[0]);
+        const temperatureReadingsToday = temperatureReadingsRes.count || 0;
+        const temperatureAlertsToday = temperatureAlertsRes.count || 0;
+        const equipmentCount = equipmentRes.count || 0;
+        const activeProducts = activeProductsRes.count || 0;
+        const expiringProductsWeek = expiringProductsRes.count || 0;
+        const expiredProducts = expiredProductsRes.count || 0;
+        const receptionsThisMonth = receptionsRes.count || 0;
+        const nonConformitiesThisMonth = nonConformReceptionsRes.count || 0;
+        const currentlyFrozen = frozenRes.count || 0;
+        const currentlyThawed = thawedRes.count || 0;
+        const overdueTasks = overdueTasksRes.count || 0;
+        const tasksCompletedToday = completedTasksTodayRes.count || 0;
+        const totalTasksToday = totalTasksTodayRes.count || 0;
 
-        const cleaningCompletion = tasksToday && tasksToday.length > 0
-          ? (tasksToday.filter(t => t.is_completed).length / tasksToday.length) * 100
-          : 0;
+        // Calculate rates
+        const temperatureComplianceRate = temperatureReadingsToday > 0
+          ? Math.round(((temperatureReadingsToday - temperatureAlertsToday) / temperatureReadingsToday) * 100)
+          : 100;
 
-        const tasksCompletedToday = tasksToday
-          ? tasksToday.filter(t => t.is_completed).length
-          : 0;
+        const receptionComplianceRate = receptionsThisMonth > 0
+          ? Math.round(((receptionsThisMonth - nonConformitiesThisMonth) / receptionsThisMonth) * 100)
+          : 100;
+
+        const cleaningCompletionRate = totalTasksToday > 0
+          ? Math.round((tasksCompletedToday / totalTasksToday) * 100)
+          : 100;
 
         setStats({
-          temperatureReadingsToday: tempReadingsToday?.length || 0,
-          temperatureAlertsToday: tempAlertsToday?.length || 0,
-          temperatureComplianceRate: Math.round(complianceRate),
-          activeProducts: activeProducts?.length || 0,
-          expiringProductsWeek: expiringProducts?.length || 0,
-          expiredProducts: expiredProducts?.length || 0,
-          receptionsThisMonth: receptionsThisMonth?.length || 0,
-          receptionComplianceRate: Math.round(receptionComplianceRate),
-          nonConformitiesThisMonth: nonConformities,
-          currentlyFrozen: frozenProducts?.length || 0,
-          currentlyThawed: thawedProducts?.length || 0,
-          cleaningCompletionRate: Math.round(cleaningCompletion),
-          overdueTasks: overdueTasks?.length || 0,
+          temperatureReadingsToday,
+          temperatureAlertsToday,
+          temperatureComplianceRate,
+          equipmentCount,
+          activeProducts,
+          expiringProductsWeek,
+          expiredProducts,
+          receptionsThisMonth,
+          receptionComplianceRate,
+          nonConformitiesThisMonth,
+          currentlyFrozen,
+          currentlyThawed,
+          cleaningCompletionRate,
+          overdueTasks,
           tasksCompletedToday,
         });
-      } catch (error) {
-        console.error('Error fetching dashboard stats:', error);
+      } catch (err) {
+        console.error("Error fetching dashboard stats:", err);
+        setError("Erreur lors du chargement des statistiques");
       } finally {
         setLoading(false);
       }
     };
 
     fetchStats();
+
+    // Refresh every 5 minutes
+    const interval = setInterval(fetchStats, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
   }, [user]);
 
-  return { stats, loading };
+  return { stats, loading, error };
 }
